@@ -1,10 +1,9 @@
-org: loclt7
-service: serverless-todo-app
+service: todos-app
+org: anhndt
+frameworkVersion: '3.24.1'
 
 plugins:
   - serverless-iam-roles-per-function
-
-frameworkVersion: '3'
 
 provider:
   name: aws
@@ -17,28 +16,28 @@ provider:
   region: ${opt:region, 'us-east-1'}
 
   environment:
-    TODOS_TABLE: todos-${self:provider.stage}
-    TODOS_CREATED_AT_INDEX: CreateAtIndex
-    ATTACHMENT_S3_BUCKET: todo-images-${self:provider.stage}
-    TODOS_S3_BUCKET: todo-s3-${self:provider.stage}
-    PROJECT_NAME: todo-app
-    SIGNED_URL_EXPIRATION: 300
-    INDEX_NAME: ${self:provider.environment.TODOS_CREATED_AT_INDEX}
+    TODOS_TABLE: Todos-${self:provider.stage}
+    TODOS_CREATED_AT_INDEX: CreatedAtIndex
+    TODOS_S3_BUCKET: peterndta-project-${self:provider.stage}
+    SIGNED_URL_EXPIRATION: 700
 
 functions:
   Auth:
     handler: src/lambda/auth/auth0Authorizer.handler
+
   GetTodos:
     handler: src/lambda/http/getTodos.handler
     events:
       - http:
           method: get
+          authorizer: Auth
           path: todos
+          cors: true
     iamRoleStatements:
       - Effect: Allow
         Action:
-          - dynamodb:PutItem
-        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE}
+          - dynamodb:Query
+        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE}/index/${self:provider.environment.TODOS_CREATED_AT_INDEX}
       - Effect: Allow
         Action:
           - 'xray:PutTraceSegments'
@@ -72,11 +71,16 @@ functions:
     events:
       - http:
           method: patch
+          authorizer: Auth
           path: todos/{todoId}
+          cors: true
+          request:
+            schemas:
+              application/json: ${file(models/update-todo-request.json)}
     iamRoleStatements:
       - Effect: Allow
         Action:
-          - dynamodb:PutItem
+          - dynamodb:UpdateItem
         Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE}
       - Effect: Allow
         Action:
@@ -89,12 +93,18 @@ functions:
     events:
       - http:
           method: delete
+          authorizer: Auth
           path: todos/{todoId}
+          cors: true
     iamRoleStatements:
       - Effect: Allow
         Action:
-          - dynamodb:PutItem
+          - dynamodb:DeleteItem
         Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE}
+      - Effect: Allow
+        Action:
+          - s3:DeleteObject
+        Resource: arn:aws:s3:::${self:provider.environment.TODOS_S3_BUCKET}/*
       - Effect: Allow
         Action:
           - 'xray:PutTraceSegments'
@@ -106,12 +116,14 @@ functions:
     events:
       - http:
           method: post
+          authorizer: Auth
           path: todos/{todoId}/attachment
+          cors: true
     iamRoleStatements:
       - Effect: Allow
         Action:
-          - dynamodb:PutItem
-        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE}
+          - s3:PutObject
+        Resource: arn:aws:s3:::${self:provider.environment.TODOS_S3_BUCKET}/*
       - Effect: Allow
         Action:
           - 'xray:PutTraceSegments'
